@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+# vim:ts=4:sw=4:sts=4:expandtab
+
+'''
+
+Purpose : Generate timebased one time password
+Author : Bharath Shetty < bharath.shetty@here.com >
+Date : Tue Jun  3 2015
+
+usage : ./totp -p <profile_name>
+    
+eg : ./totp -p dev
+
+Ref : http://tools.ietf.org/html/rfc6238
+
+Config File:
+    Keep Configuration file under home directory(~/.totp.cfg) and the profiles. 
+
+Syntax : [profile_name]        
+    Description : Description of the profile.
+    Secret : XXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+    eg: [dev]
+    Description : user@dev.account.com.
+    Secret : XXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+Notes: How to get VIP secret? : https://github.com/cyrozap/python-vipaccess
+
+'''
+
+import hmac, base64, struct, hashlib, time
+import ConfigParser,argparse,os,sys
+
+parser=argparse.ArgumentParser(description="Generate TOTP")
+parser.add_argument("-p","--profile", help="profile name",required=True)
+args=parser.parse_args()
+
+class totp:
+    def __init__(self):
+        try:
+            config = ConfigParser.ConfigParser()
+            config.read(['totp.cfg', os.path.expanduser('~/.totp.cfg')])
+            self.description=config.get(args.profile,'Description')
+            self.secret=config.get(args.profile,'Secret')
+        except Exception,e:
+            print "Failed to read config file, reason (%s)" %e
+            exit(1)
+        
+
+    def get_totp_token(self):
+            key=base64.b32decode(self.secret, True)
+            msg=struct.pack(">Q", int(time.time())//30)
+            h_mac= hmac.new(key, msg, hashlib.sha1).digest()
+            o=ord(h_mac[19]) & 15
+            token=(struct.unpack(">I",h_mac[o:o+4])[0] & 0x7fffffff) % 1000000
+            return token
+
+if __name__ == "__main__":
+    o=totp()
+    previous=0
+    print "-"*len(o.description)
+    print o.description
+    print "-"*len(o.description)
+    while True:
+        try:
+            current=o.get_totp_token()
+            if current != previous:
+                sys.stdout.write("\r %0*d " %(6,current))
+                sys.stdout.flush()
+                previous=current
+            time.sleep(1)
+        except KeyboardInterrupt:
+            print "\n Bye.."
+            exit(0)
